@@ -1,4 +1,4 @@
-$VERSION = "1.8.0"
+$VERSION = "1.8.1"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -16,6 +16,12 @@ if ($script) {
 }
 
 $logPath = "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"
+
+# Mapa manual opcional: adicione AppId (primeiros 8 chars) = "Nome do App"
+$manualAppNames = @{
+    # "501FCB7D" = "Microsoft Teams"
+    # "XXXXXXXX" = "Nome do App"
+}
 $keywords = "Win32App|Identifying|Installing|Downloading|Success|Failed|Error|SideCarAgent|exitCode|Detection|enforcement|Completed|Pending|Tracked|started|Add File|Job|action status"
 
 $exitCodes = @{
@@ -93,7 +99,54 @@ function Build-HTML {
         } catch {}
     }
 
-    # 2) Registro do IME (Win32Apps enforcement data)
+    $guidPattern = "[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}"
+
+    # 2) Registro MDM - políticas de app Win32 cached pelo CSP
+    try {
+        @(
+            "HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device",
+            "HKLM:\SOFTWARE\Microsoft\EnterpriseResourceManager\Tracked",
+            "HKLM:\SOFTWARE\Microsoft\Enrollments"
+        ) | ForEach-Object {
+            if (Test-Path $_) {
+                Get-ChildItem $_ -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                    $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                    if ($p) {
+                        $p.PSObject.Properties | Where-Object { $_.Name -match "^[A-Fa-f0-9]{8}-" } | ForEach-Object {
+                            $val = $_.Value
+                            if ($val -and $val -match "DisplayName|AppName|Name") {
+                                try {
+                                    $j = $val | ConvertFrom-Json -ErrorAction Stop
+                                    foreach ($k in @("DisplayName","AppName","ApplicationName","Name")) {
+                                        if ($j.$k) { $appNameMap[$_.Name.ToUpper()] = $j.$k; break }
+                                    }
+                                } catch {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch {}
+
+    # Mapa manual configurado pelo usuário
+    $manualAppNames.GetEnumerator() | ForEach-Object { $appNameMap[$_.Key.ToUpper()] = $_.Value }
+
+    # 3) Windows Event Log do IME (contém nomes de apps)
+    try {
+        Get-WinEvent -LogName "Microsoft-Windows-DeviceManagement-Enterprise-Diagnostics-Provider/Admin" -MaxEvents 1000 -ErrorAction Stop |
+            ForEach-Object {
+                $msg = $_.Message
+                if ($msg -match "($guidPattern).*?(?:app)?[Nn]ame\s*[=:]\s*'?([^,'\r\n]{3,80}?)'?(?:[,;)]|$)") {
+                    if (-not $appNameMap[$matches[1].ToUpper()]) { $appNameMap[$matches[1].ToUpper()] = $matches[2].Trim() }
+                }
+                if ($msg -match "(?:app)?[Nn]ame\s*[=:]\s*'?([^,'\r\n]{3,80}?)'?[,;(].*?($guidPattern)") {
+                    if (-not $appNameMap[$matches[2].ToUpper()]) { $appNameMap[$matches[2].ToUpper()] = $matches[1].Trim() }
+                }
+            }
+    } catch {}
+
+    # 4) Registro do IME (Win32Apps enforcement data)
     try {
         $regBase = "HKLM:\SOFTWARE\Microsoft\IntuneManagementExtension\Win32Apps"
         if (Test-Path $regBase) {
@@ -107,8 +160,7 @@ function Build-HTML {
         }
     } catch {}
 
-    # 3) Todos os logs do IME (SideCarAgent, AgentExecutor, etc.)
-    $guidPattern = "[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}"
+    # 5) Todos os logs do IME (SideCarAgent, AgentExecutor, etc.)
     $logDir = Split-Path $logPath
     Get-ChildItem $logDir -Filter "*.log" -ErrorAction SilentlyContinue | ForEach-Object {
         Get-Content $_.FullName -Tail 5000 -ErrorAction SilentlyContinue | ForEach-Object {
