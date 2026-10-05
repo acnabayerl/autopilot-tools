@@ -1,4 +1,4 @@
-$VERSION = "1.7.1"
+$VERSION = "1.7.2"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -69,15 +69,29 @@ function Build-HTML {
 
     # Primeira passagem: mapear AppId -> Nome do app
     $appNameMap = @{}
-    Get-Content $logPath -Tail 2000 | ForEach-Object {
+    $guidPattern = "[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}"
+    Get-Content $logPath | ForEach-Object {
         if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') {
             $m = $matches[1]
-            if ($m -match "name\s*=\s*(.+?)\s+.*?id\s*=\s*([A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12})") {
+            # "name = X ... id = {guid}" ou "appName = X ... {guid}"
+            if ($m -match "(?:app)?[Nn]ame\s*=\s*'?(.+?)'?\s*[,;].*?($guidPattern)") {
                 $appNameMap[$matches[2].ToUpper()] = $matches[1].Trim()
-            } elseif ($m -match "id\s*=\s*([A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}).*?name\s*=\s*(.+?)(?:\s*$)") {
+            }
+            # "id = {guid} ... name = X"
+            if ($m -match "($guidPattern).*?(?:app)?[Nn]ame\s*=\s*'?(.+?)'?(?:\s*[,;]|$)") {
                 if (-not $appNameMap[$matches[1].ToUpper()]) { $appNameMap[$matches[1].ToUpper()] = $matches[2].Trim() }
-            } elseif ($m -match "appName\s*=\s*(.+?)\s*[,\(].*?([A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12})") {
-                $appNameMap[$matches[2].ToUpper()] = $matches[1].Trim()
+            }
+            # "Processing/Checking AppName (id/guid)" ex: Processing Teams (501FCB7D-...)
+            if ($m -match "(?:Processing|Checking|Applying|Downloading content for app)\s+(.+?)\s+\(?(?:id\s*[=:]\s*)?($guidPattern)\)?") {
+                if (-not $appNameMap[$matches[2].ToUpper()]) { $appNameMap[$matches[2].ToUpper()] = $matches[1].Trim() }
+            }
+            # win32 app '{guid}', name '{name}' (CSP format)
+            if ($m -match "win32 app '($guidPattern)'.*?name '(.+?)'") {
+                $appNameMap[$matches[1].ToUpper()] = $matches[2].Trim()
+            }
+            # {guid}.*name ou name.*{guid} generico
+            if ($m -match "($guidPattern)[^\n]*?[Nn]ame[^\w]+'?(.+?)'?(?:[,;]|$)") {
+                if (-not $appNameMap[$matches[1].ToUpper()]) { $appNameMap[$matches[1].ToUpper()] = $matches[2].Trim() }
             }
         }
     }
@@ -287,6 +301,19 @@ while ($listener.IsListening) {
             $ctx.Response.OutputStream.Close()
             Write-Host "Browser fechado — encerrando." -ForegroundColor Yellow
             $listener.Stop()
+        } elseif ($path -eq "/debug-app") {
+            # Retorna linhas do log que contêm GUIDs de apps (para ajustar regex de nomes)
+            $sample = Get-Content $logPath | Where-Object {
+                $_ -match '\!\[LOG\[' -and $_ -match "[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}" -and $_ -match "[Nn]ame"
+            } | Select-Object -First 30 | ForEach-Object {
+                if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') { $matches[1] }
+            }
+            $body = ($sample -join "`n`n")
+            $buf = [System.Text.Encoding]::UTF8.GetBytes($body)
+            $ctx.Response.ContentType = "text/plain; charset=utf-8"
+            $ctx.Response.ContentLength64 = $buf.Length
+            $ctx.Response.OutputStream.Write($buf, 0, $buf.Length)
+            $ctx.Response.OutputStream.Close()
         } elseif ($path -eq "/favicon.ico") {
             $ctx.Response.StatusCode = 404
             $ctx.Response.OutputStream.Close()
