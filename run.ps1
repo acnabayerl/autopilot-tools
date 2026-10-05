@@ -1,4 +1,4 @@
-$VERSION = "1.7.9"
+$VERSION = "1.8.0"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -74,26 +74,23 @@ function Build-HTML {
     $appNameMap = $script:appNameMap
     $imePath = "C:\ProgramData\Microsoft\IntuneManagementExtension"
 
-    # 1) Arquivos JSON de estado/relatorio do IME
-    @("$imePath\State", "$imePath\Reports", "$imePath\Policies") | ForEach-Object {
-        if (Test-Path $_) {
-            Get-ChildItem $_ -Recurse -Filter "*.json" -ErrorAction SilentlyContinue | ForEach-Object {
-                try {
-                    $j = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-                    # Objeto direto com Id/Name
-                    if ($j.Id -and $j.Name) { $appNameMap[$j.Id.ToUpper()] = $j.Name }
-                    # Array de apps
-                    foreach ($prop in @("Apps","Win32Apps","Applications","Policies")) {
-                        if ($j.$prop) {
-                            $j.$prop | ForEach-Object {
-                                if ($_.Id -and $_.Name)        { $appNameMap[$_.Id.ToUpper()] = $_.Name }
-                                if ($_.AppId -and $_.AppName)  { $appNameMap[$_.AppId.ToUpper()] = $_.AppName }
-                            }
-                        }
-                    }
-                } catch {}
+    # 1) Todos os JSON do IME recursivamente
+    Get-ChildItem $imePath -Recurse -Include "*.json","*.dat" -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            $j = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            # Função para extrair Id->Nome de qualquer objeto
+            $extract = {
+                param($o)
+                $id = $null; $nm = $null
+                foreach ($k in @("ApplicationId","AppId","Id","appId")) { if ($o.$k) { $id = $o.$k; break } }
+                foreach ($k in @("ApplicationName","DisplayName","AppName","Name","appName")) { if ($o.$k -and $o.$k -ne "null") { $nm = $o.$k; break } }
+                if ($id -and $nm) { $appNameMap[$id.ToUpper()] = $nm }
             }
-        }
+            & $extract $j
+            foreach ($prop in @("Apps","Win32Apps","Applications","Policies","value","items","Results")) {
+                if ($j.$prop -is [array]) { $j.$prop | ForEach-Object { & $extract $_ } }
+            }
+        } catch {}
     }
 
     # 2) Registro do IME (Win32Apps enforcement data)
