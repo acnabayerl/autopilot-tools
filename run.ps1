@@ -9,3 +9,6 @@ if ($script) {
 } else {
     Write-Host "Script não encontrado após instalação." -ForegroundColor Red
 }
+
+Write-Host "`n--- MONITORANDO IME LOG (Ctrl+C para parar) ---`n" -ForegroundColor Cyan
+Get-Content "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log" -Wait -Tail 20
