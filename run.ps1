@@ -1,4 +1,4 @@
-$VERSION = "1.8.2"
+$VERSION = "1.8.3"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -369,6 +369,42 @@ $errorGroupHTML
 "@
 }
 
+# ── IME Cache Watcher ────────────────────────────────────────────────────────
+$captureDir = "C:\Temp\IMECapture"
+if (-not (Test-Path $captureDir)) { New-Item -ItemType Directory -Path $captureDir -Force | Out-Null }
+
+$watchPaths = @(
+    "C:\Windows\IMECache",
+    "C:\Program Files (x86)\Microsoft Intune Management Extension\Content"
+)
+
+$script:watchers = @()
+foreach ($wp in $watchPaths) {
+    if (-not (Test-Path $wp)) { continue }
+    $w = [System.IO.FileSystemWatcher]::new($wp)
+    $w.IncludeSubdirectories = $true
+    $w.EnableRaisingEvents = $true
+    $w.NotifyFilter = [System.IO.NotifyFilters]::FileName -bor [System.IO.NotifyFilters]::LastWrite
+
+    $action = {
+        param($src, $e)
+        try {
+            $src2 = $e.FullPath
+            if (-not (Test-Path $src2 -PathType Leaf)) { return }
+            $rel = $src2 -replace [regex]::Escape("C:\Windows\IMECache\"), "" `
+                         -replace [regex]::Escape("C:\Program Files (x86)\Microsoft Intune Management Extension\Content\"), ""
+            $dest = Join-Path $captureDir ($rel -replace "[\\\/]","_")
+            Copy-Item -Path $src2 -Destination $dest -Force -ErrorAction SilentlyContinue
+            Write-Host "[IMECapture] $src2 → $dest" -ForegroundColor Magenta
+        } catch {}
+    }
+
+    Register-ObjectEvent -InputObject $w -EventName "Created" -Action $action | Out-Null
+    Register-ObjectEvent -InputObject $w -EventName "Changed" -Action $action | Out-Null
+    $script:watchers += $w
+}
+Write-Host "IMECapture ativo — salvando em $captureDir" -ForegroundColor Magenta
+
 $listener = [System.Net.HttpListener]::new()
 $listener.Prefixes.Add("http://localhost:8080/")
 $listener.Start()
@@ -436,4 +472,5 @@ while ($listener.IsListening) {
 }
 
 $watchdog.Dispose()
+$script:watchers | ForEach-Object { $_.Dispose() }
 Write-Host "Monitor encerrado." -ForegroundColor Red
