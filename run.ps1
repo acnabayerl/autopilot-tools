@@ -1,4 +1,4 @@
-$VERSION = "1.5.0"
+$VERSION = "1.6.0"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -81,7 +81,7 @@ function Build-HTML {
                     $info = Get-ExitCodeInfo $msg
                     if ($info) {
                         $tooltipAttr = "data-tooltip=`"$info`""
-                        $tooltip = "<span class='tooltip-icon' title='$info'>💡</span>"
+                        $tooltip = "<span class='tooltip-icon'>💡</span>"
                     }
                     if ($appName) {
                         if (-not $errorGroups[$appName]) { $errorGroups[$appName] = 0 }
@@ -103,8 +103,7 @@ function Build-HTML {
         $errorGroupHTML = "<div class='error-groups'><div class='eg-title'>❌ Erros por App</div>"
         foreach ($key in ($errorGroups.Keys | Sort-Object)) {
             $count = $errorGroups[$key]
-            $bar = $count * 20
-            if ($bar -gt 200) { $bar = 200 }
+            $bar = [Math]::Min($count * 20, 200)
             $errorGroupHTML += "<div class='eg-row'><span class='eg-app'>APP:$key</span><div class='eg-bar-wrap'><div class='eg-bar' style='width:${bar}px'></div></div><span class='eg-count'>$count x</span></div>"
         }
         $errorGroupHTML += "</div>"
@@ -202,15 +201,19 @@ $errorGroupHTML
 <div id='log'>$($lines -join '')</div>
 <script>
   var paused = false; var refreshTimer;
+
   function ping() { fetch('/ping').catch(function(){}); setTimeout(ping, 3000); }
   ping();
+
   function toggleRefresh() {
     paused = !paused;
     var btn = document.getElementById('btnRefresh');
     if (paused) { btn.textContent = '▶ Retomar'; btn.classList.add('paused'); clearTimeout(refreshTimer); }
     else { btn.textContent = '⏸ Pausar'; btn.classList.remove('paused'); scheduleRefresh(); }
   }
+
   function scheduleRefresh() { refreshTimer = setTimeout(function() { location.reload(); }, 5000); }
+
   function filter(type) {
     document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
     document.querySelector('.filter-btn.' + type).classList.add('active');
@@ -218,9 +221,19 @@ $errorGroupHTML
       r.style.display = (type === 'all' || r.dataset.type === type) ? '' : 'none';
     });
   }
+
   document.getElementById('log').scrollTop = 99999;
   if (!paused) scheduleRefresh();
-  window.addEventListener('beforeunload', function() { navigator.sendBeacon('/close'); });
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+      setTimeout(function() {
+        if (document.visibilityState === 'hidden') {
+          navigator.sendBeacon('/close');
+        }
+      }, 3000);
+    }
+  });
 </script>
 </body></html>
 "@
@@ -234,11 +247,11 @@ Start-Process "http://localhost:8080/"
 
 $script:lastPing = [datetime]::UtcNow
 $watchdog = [System.Threading.Timer]::new({
-    if (([datetime]::UtcNow - $script:lastPing).TotalSeconds -gt 10) {
+    if (([datetime]::UtcNow - $script:lastPing).TotalSeconds -gt 30) {
         Write-Host "Browser fechado — encerrando." -ForegroundColor Yellow
         $listener.Stop()
     }
-}, $null, 5000, 3000)
+}, $null, 60000, 3000)
 
 while ($listener.IsListening) {
     try {
