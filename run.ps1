@@ -1,4 +1,4 @@
-$VERSION = "1.7.2"
+$VERSION = "1.7.3"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -67,31 +67,56 @@ function Get-Badge($msg) {
 function Build-HTML {
     $errorGroups = @{}
 
-    # Primeira passagem: mapear AppId -> Nome do app
+    # Mapear AppId -> Nome do app via arquivos de estado do IME
     $appNameMap = @{}
+    $imePath = "C:\ProgramData\Microsoft\IntuneManagementExtension"
+
+    # 1) Arquivos JSON de estado/relatorio do IME
+    @("$imePath\State", "$imePath\Reports", "$imePath\Policies") | ForEach-Object {
+        if (Test-Path $_) {
+            Get-ChildItem $_ -Recurse -Filter "*.json" -ErrorAction SilentlyContinue | ForEach-Object {
+                try {
+                    $j = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                    # Objeto direto com Id/Name
+                    if ($j.Id -and $j.Name) { $appNameMap[$j.Id.ToUpper()] = $j.Name }
+                    # Array de apps
+                    foreach ($prop in @("Apps","Win32Apps","Applications","Policies")) {
+                        if ($j.$prop) {
+                            $j.$prop | ForEach-Object {
+                                if ($_.Id -and $_.Name)        { $appNameMap[$_.Id.ToUpper()] = $_.Name }
+                                if ($_.AppId -and $_.AppName)  { $appNameMap[$_.AppId.ToUpper()] = $_.AppName }
+                            }
+                        }
+                    }
+                } catch {}
+            }
+        }
+    }
+
+    # 2) Registro do IME (Win32Apps enforcement data)
+    try {
+        $regBase = "HKLM:\SOFTWARE\Microsoft\IntuneManagementExtension\Win32Apps"
+        if (Test-Path $regBase) {
+            Get-ChildItem $regBase -ErrorAction SilentlyContinue | ForEach-Object {
+                Get-ChildItem $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {
+                    $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+                    if ($p.AppName -and $p.AppId) { $appNameMap[$p.AppId.ToUpper()] = $p.AppName }
+                    if ($p.Name -and $p.Id)       { $appNameMap[$p.Id.ToUpper()] = $p.Name }
+                }
+            }
+        }
+    } catch {}
+
+    # 3) Fallback: log parsing
     $guidPattern = "[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}"
-    Get-Content $logPath | ForEach-Object {
+    Get-Content $logPath -Tail 3000 | ForEach-Object {
         if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') {
             $m = $matches[1]
-            # "name = X ... id = {guid}" ou "appName = X ... {guid}"
-            if ($m -match "(?:app)?[Nn]ame\s*=\s*'?(.+?)'?\s*[,;].*?($guidPattern)") {
-                $appNameMap[$matches[2].ToUpper()] = $matches[1].Trim()
-            }
-            # "id = {guid} ... name = X"
-            if ($m -match "($guidPattern).*?(?:app)?[Nn]ame\s*=\s*'?(.+?)'?(?:\s*[,;]|$)") {
+            if ($m -match "($guidPattern).*?(?:app)?[Nn]ame\s*[=:]\s*'?([^,'\r\n]{3,60}?)'?(?:\s*[,;)]|$)") {
                 if (-not $appNameMap[$matches[1].ToUpper()]) { $appNameMap[$matches[1].ToUpper()] = $matches[2].Trim() }
             }
-            # "Processing/Checking AppName (id/guid)" ex: Processing Teams (501FCB7D-...)
-            if ($m -match "(?:Processing|Checking|Applying|Downloading content for app)\s+(.+?)\s+\(?(?:id\s*[=:]\s*)?($guidPattern)\)?") {
+            if ($m -match "(?:app)?[Nn]ame\s*[=:]\s*'?([^,'\r\n]{3,60}?)'?\s*[,;)].*?($guidPattern)") {
                 if (-not $appNameMap[$matches[2].ToUpper()]) { $appNameMap[$matches[2].ToUpper()] = $matches[1].Trim() }
-            }
-            # win32 app '{guid}', name '{name}' (CSP format)
-            if ($m -match "win32 app '($guidPattern)'.*?name '(.+?)'") {
-                $appNameMap[$matches[1].ToUpper()] = $matches[2].Trim()
-            }
-            # {guid}.*name ou name.*{guid} generico
-            if ($m -match "($guidPattern)[^\n]*?[Nn]ame[^\w]+'?(.+?)'?(?:[,;]|$)") {
-                if (-not $appNameMap[$matches[1].ToUpper()]) { $appNameMap[$matches[1].ToUpper()] = $matches[2].Trim() }
             }
         }
     }
@@ -302,13 +327,17 @@ while ($listener.IsListening) {
             Write-Host "Browser fechado — encerrando." -ForegroundColor Yellow
             $listener.Stop()
         } elseif ($path -eq "/debug-app") {
-            # Retorna linhas do log que contêm GUIDs de apps (para ajustar regex de nomes)
-            $sample = Get-Content $logPath | Where-Object {
+            $dbgLines = @("=== AppNameMap ($($appNameMap.Count) entradas) ===")
+            $appNameMap.GetEnumerator() | Select-Object -First 20 | ForEach-Object { $dbgLines += "$($_.Key) = $($_.Value)" }
+            $dbgLines += ""
+            $dbgLines += "=== Linhas do log com GUID + name (primeiras 20) ==="
+            $found = Get-Content $logPath -Tail 3000 | Where-Object {
                 $_ -match '\!\[LOG\[' -and $_ -match "[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}" -and $_ -match "[Nn]ame"
-            } | Select-Object -First 30 | ForEach-Object {
-                if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') { $matches[1] }
+            } | Select-Object -First 20 | ForEach-Object {
+                if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') { $matches[1] } else { $_ }
             }
-            $body = ($sample -join "`n`n")
+            if ($found) { $dbgLines += $found } else { $dbgLines += "(nenhuma linha encontrada)" }
+            $body = $dbgLines -join "`n"
             $buf = [System.Text.Encoding]::UTF8.GetBytes($body)
             $ctx.Response.ContentType = "text/plain; charset=utf-8"
             $ctx.Response.ContentLength64 = $buf.Length
