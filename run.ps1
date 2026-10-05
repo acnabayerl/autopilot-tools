@@ -1,4 +1,4 @@
-$VERSION = "1.7.5"
+$VERSION = "1.7.6"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -375,5 +375,3 @@ while ($listener.IsListening) {
 
 $watchdog.Dispose()
 Write-Host "Monitor encerrado." -ForegroundColor Red
-Write-Host "Pressione qualquer tecla para fechar..." -ForegroundColor Cyan
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
