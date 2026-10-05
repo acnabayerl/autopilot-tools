@@ -1,4 +1,4 @@
-$VERSION = "1.7.8"
+$VERSION = "1.7.9"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -291,9 +291,9 @@ $errorGroupHTML
     $target = "501FCB7D-A970-4E34-A753-4B48FE5D8BEF"
     $hits = @()
     Get-ChildItem (Split-Path $logPath) -Filter "*.log" -ErrorAction SilentlyContinue | ForEach-Object {
-        Get-Content $_.FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match $target } | Select-Object -First 2 | ForEach-Object {
-            $m = if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') { $matches[1].Substring(0,[Math]::Min(120,$matches[1].Length)) } else { $_.Substring(0,[Math]::Min(120,$_.Length)) }
-            $safe = $m -replace '[\\`"''<>]',''
+        Get-Content $_.FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match $target } | Select-Object -First 5 | ForEach-Object {
+            $m = if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') { $matches[1] } else { $_ }
+            $safe = ($m.Substring(0,[Math]::Min(300,$m.Length))) -replace '[\\`"''<>]',''
             $hits += "console.log('[LOG] $safe');"
         }
     }
