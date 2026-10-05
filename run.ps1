@@ -1,4 +1,4 @@
-$VERSION = "1.7.7"
+$VERSION = "1.7.8"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -110,15 +110,17 @@ function Build-HTML {
         }
     } catch {}
 
-    # 3) Fallback: log parsing
+    # 3) Todos os logs do IME (SideCarAgent, AgentExecutor, etc.)
     $guidPattern = "[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}"
-    Get-Content $logPath -Tail 3000 | ForEach-Object {
-        if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') {
-            $m = $matches[1]
-            if ($m -match "($guidPattern).*?(?:app)?[Nn]ame\s*[=:]\s*'?([^,'\r\n]{3,60}?)'?(?:\s*[,;)]|$)") {
+    $logDir = Split-Path $logPath
+    Get-ChildItem $logDir -Filter "*.log" -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-Content $_.FullName -Tail 5000 -ErrorAction SilentlyContinue | ForEach-Object {
+            $raw = if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') { $matches[1] } else { $_ }
+            # "id = {guid} ... name = X" e variações
+            if ($raw -match "($guidPattern)[^`n]{0,80}?(?:app)?[Nn]ame\s*[=:]\s*[`"']?([^,`"'\r`n]{3,80}?)(?:[`"',;)]|$)") {
                 if (-not $appNameMap[$matches[1].ToUpper()]) { $appNameMap[$matches[1].ToUpper()] = $matches[2].Trim() }
             }
-            if ($m -match "(?:app)?[Nn]ame\s*[=:]\s*'?([^,'\r\n]{3,60}?)'?\s*[,;)].*?($guidPattern)") {
+            if ($raw -match "(?:app)?[Nn]ame\s*[=:]\s*[`"']?([^,`"'\r`n]{3,80}?)[`"']?\s*[,;(]?[^`n]{0,80}?($guidPattern)") {
                 if (-not $appNameMap[$matches[2].ToUpper()]) { $appNameMap[$matches[2].ToUpper()] = $matches[1].Trim() }
             }
         }
@@ -284,10 +286,19 @@ $errorGroupHTML
   }
 
   // Debug IME
-  console.log('[IME] nomes=$($script:appNameMap.Count) | sample:', $(
-    $s = $script:appNameMap.GetEnumerator() | Select-Object -First 3 | ForEach-Object { "`"$($_.Key.Substring(0,8))`":`"$($_.Value)`"" }
-    if ($s) { "{" + ($s -join ",") + "}" } else { '{}' }
-  ));
+  console.log('[IME] nomes=$($script:appNameMap.Count)');
+  $(
+    $target = "501FCB7D-A970-4E34-A753-4B48FE5D8BEF"
+    $hits = @()
+    Get-ChildItem (Split-Path $logPath) -Filter "*.log" -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-Content $_.FullName -ErrorAction SilentlyContinue | Where-Object { $_ -match $target } | Select-Object -First 2 | ForEach-Object {
+            $m = if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') { $matches[1].Substring(0,[Math]::Min(120,$matches[1].Length)) } else { $_.Substring(0,[Math]::Min(120,$_.Length)) }
+            $safe = $m -replace '[\\`"''<>]',''
+            $hits += "console.log('[LOG] $safe');"
+        }
+    }
+    if ($hits.Count -gt 0) { $hits -join "`n" } else { "console.warn('[IME] GUID 501FCB7D nao encontrado nos logs');" }
+  )
 
   document.getElementById('log').scrollTop = 99999;
   if (!paused) scheduleRefresh();
