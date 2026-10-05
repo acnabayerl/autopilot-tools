@@ -1,10 +1,10 @@
-$VERSION = "1.4.0"
+$VERSION = "1.5.0"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
 
 if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue | Where-Object {$_.Version -ge '2.8.5.201'})) {
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false | Out-Null
 }
 Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
 Install-Script -Name Get-AutopilotDiagnostics -Force -Scope CurrentUser
@@ -133,7 +133,7 @@ button { cursor: pointer; border: none; border-radius: 6px; padding: 6px 14px; f
 .eg-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .eg-app { color: #aaa; font-size: 11px; min-width: 100px; background: #333; padding: 2px 6px; border-radius: 4px; }
 .eg-bar-wrap { background: #2a1010; border-radius: 4px; height: 12px; width: 200px; }
-.eg-bar { background: #f87171; height: 12px; border-radius: 4px; transition: width .3s; }
+.eg-bar { background: #f87171; height: 12px; border-radius: 4px; }
 .eg-count { color: #f87171; font-weight: bold; font-size: 12px; min-width: 30px; }
 .filters { display: flex; gap: 8px; padding: 10px 20px; background: #111; border-bottom: 1px solid #222; flex-wrap: wrap; align-items: center; }
 .filters span { color: #888; font-size: 12px; }
@@ -164,7 +164,7 @@ button { cursor: pointer; border: none; border-radius: 6px; padding: 6px 14px; f
 .badge.info       { background: #555; color: #fff; }
 .app { background: #333; color: #aaa; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
 .msg { color: #ddd; line-height: 1.4; word-break: break-word; flex: 1; }
-.tooltip-icon { cursor: help; font-size: 14px; position: relative; }
+.tooltip-icon { cursor: help; font-size: 14px; }
 .row[data-tooltip]:hover::after {
     content: attr(data-tooltip);
     position: absolute; left: 80px; top: 100%; z-index: 99;
