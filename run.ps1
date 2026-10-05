@@ -1,4 +1,4 @@
-$VERSION = "1.7.0"
+$VERSION = "1.7.1"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -66,13 +66,37 @@ function Get-Badge($msg) {
 
 function Build-HTML {
     $errorGroups = @{}
+
+    # Primeira passagem: mapear AppId -> Nome do app
+    $appNameMap = @{}
+    Get-Content $logPath -Tail 2000 | ForEach-Object {
+        if ($_ -match '\!\[LOG\[(.+?)\]LOG\]') {
+            $m = $matches[1]
+            if ($m -match "name\s*=\s*(.+?)\s+.*?id\s*=\s*([A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12})") {
+                $appNameMap[$matches[2].ToUpper()] = $matches[1].Trim()
+            } elseif ($m -match "id\s*=\s*([A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}).*?name\s*=\s*(.+?)(?:\s*$)") {
+                if (-not $appNameMap[$matches[1].ToUpper()]) { $appNameMap[$matches[1].ToUpper()] = $matches[2].Trim() }
+            } elseif ($m -match "appName\s*=\s*(.+?)\s*[,\(].*?([A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12})") {
+                $appNameMap[$matches[2].ToUpper()] = $matches[1].Trim()
+            }
+        }
+    }
+
     $lines = Get-Content $logPath -Tail 500 | ForEach-Object {
         if ($_ -match '\!\[LOG\[(.+?)\]LOG\].*time="(\d+:\d+:\d+)') {
             $msg = $matches[1].Trim(); $time = $matches[2]
             if ($msg -match $keywords) {
                 $badge = Get-Badge $msg
-                $appName = if ($msg -match "Win32App_([a-f0-9\-]+)") { $matches[1].Substring(0,8) } else { "" }
-                $appTag = if ($appName) { "<span class='app'>APP:$appName</span>" } else { "" }
+                $resolvedApp = ""
+                if ($msg -match "File Id:\s*([A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12})") {
+                    $fid = $matches[1].ToUpper()
+                    $resolvedApp = if ($appNameMap[$fid]) { $appNameMap[$fid] } else { $fid.Substring(0,8) }
+                } elseif ($msg -match "Win32App_([a-f0-9\-]+)") {
+                    $aid = $matches[1].ToUpper().Substring(0, [Math]::Min(36, $matches[1].Length))
+                    $resolvedApp = if ($appNameMap[$aid]) { $appNameMap[$aid] } else { $matches[1].Substring(0,8) }
+                }
+                $appName = $resolvedApp
+                $appTag = if ($appName) { "<span class='app' title='$appName'>$appName</span>" } else { "" }
                 $tooltipAttr = ""; $tooltip = ""
                 if ($badge -eq "error") {
                     $info = Get-ExitCodeInfo $msg
@@ -158,7 +182,7 @@ button { cursor: pointer; border: none; border-radius: 6px; padding: 6px 14px; f
 .badge.installing { background: #facc15; color: #000; }
 .badge.pending    { background: #a78bfa; color: #000; }
 .badge.info       { background: #555;    color: #fff; }
-.app { background: #333; color: #aaa; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+.app { background: #333; color: #aaa; font-size: 10px; padding: 2px 6px; border-radius: 4px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; cursor: default; }
 .msg { color: #ddd; line-height: 1.4; word-break: break-word; flex: 1; }
 .tooltip-icon { cursor: help; font-size: 14px; }
 .row[data-tooltip]:hover::after {
