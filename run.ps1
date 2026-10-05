@@ -1,3 +1,8 @@
+$VERSION = "1.0.0"
+Write-Host "==============================" -ForegroundColor Cyan
+Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
+Write-Host "==============================" -ForegroundColor Cyan
+
 if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue | Where-Object {$_.Version -ge '2.8.5.201'})) {
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
 }
@@ -11,7 +16,6 @@ if ($script) {
 }
 
 $logPath = "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"
-$htmlPath = "C:\Windows\Temp\ime_monitor.html"
 $keywords = "Win32App|Identifying|Installing|Download|Success|Failed|Error|SideCarAgent|exitCode|Detection|enforcement|Completed|Pending|Tracked"
 
 function Get-Badge($msg) {
@@ -23,7 +27,7 @@ function Get-Badge($msg) {
     else                                               { return "info" }
 }
 
-function Update-HTML {
+function Build-HTML {
     $lines = Get-Content $logPath -Tail 300 | ForEach-Object {
         if ($_ -match '\!\[LOG\[(.+?)\]LOG\].*time="(\d+:\d+:\d+)') {
             $msg = $matches[1].Trim(); $time = $matches[2]
@@ -35,13 +39,15 @@ function Update-HTML {
             }
         }
     }
-    $html = @"
-<!DOCTYPE html><html><head><meta http-equiv='refresh' content='5'>
+    return @"
+<!DOCTYPE html><html><head>
+<meta http-equiv='refresh' content='5'>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0f0f0f; font-family: 'Segoe UI', Consolas, monospace; font-size: 13px; color: #ccc; }
-header { background: #1a1a2e; padding: 16px 20px; border-bottom: 2px solid #333; display: flex; align-items: center; gap: 16px; }
+header { background: #1a1a2e; padding: 16px 20px; border-bottom: 2px solid #333; display: flex; align-items: center; gap: 12px; }
 header h1 { color: #fff; font-size: 18px; }
+.version { background: #333; color: #aaa; font-size: 11px; padding: 3px 8px; border-radius: 4px; }
 header .clock { color: #888; font-size: 13px; margin-left: auto; }
 .stats { display: flex; gap: 12px; padding: 12px 20px; background: #111; border-bottom: 1px solid #222; }
 .stat { background: #1e1e1e; border-radius: 8px; padding: 8px 16px; text-align: center; min-width: 80px; }
@@ -69,6 +75,7 @@ header .clock { color: #888; font-size: 13px; margin-left: auto; }
 </style></head><body>
 <header>
   <h1>🔍 IME Monitor</h1>
+  <span class='version'>v$VERSION</span>
   <span class='clock'>Atualizado: $(Get-Date -Format 'HH:mm:ss') | Auto-refresh: 5s</span>
 </header>
 <div class='stats'>
@@ -81,10 +88,20 @@ header .clock { color: #888; font-size: 13px; margin-left: auto; }
 <script>document.getElementById('log').scrollTop=99999</script>
 </body></html>
 "@
-    $html | Set-Content $htmlPath -Encoding UTF8
 }
 
-Update-HTML
-Start-Process $htmlPath
-Write-Host "Monitor aberto! Atualizando a cada 5s..." -ForegroundColor Cyan
-while ($true) { Start-Sleep 5; Update-HTML }
+$listener = [System.Net.HttpListener]::new()
+$listener.Prefixes.Add("http://localhost:8080/")
+$listener.Start()
+Write-Host "Monitor em http://localhost:8080 — abrindo browser..." -ForegroundColor Cyan
+Start-Process "http://localhost:8080/"
+
+while ($listener.IsListening) {
+    $ctx = $listener.GetContext()
+    $html = Build-HTML
+    $buf = [System.Text.Encoding]::UTF8.GetBytes($html)
+    $ctx.Response.ContentType = "text/html; charset=utf-8"
+    $ctx.Response.ContentLength64 = $buf.Length
+    $ctx.Response.OutputStream.Write($buf, 0, $buf.Length)
+    $ctx.Response.OutputStream.Close()
+}
