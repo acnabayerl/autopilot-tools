@@ -4,19 +4,23 @@ if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue | Where-
 Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
 Install-Script -Name Get-AutopilotDiagnostics -Force -Scope CurrentUser
 $script = Get-ChildItem -Path C:\Users -Recurse -Filter "Get-AutopilotDiagnostics.ps1" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-if ($script) { & $script } else { Write-Host "Script não encontrado." -ForegroundColor Red }
+if ($script) {
+    Start-Process powershell -ArgumentList "-ExecutionPolicy Bypass -File `"$script`"" -NoNewWindow
+} else {
+    Write-Host "Script não encontrado." -ForegroundColor Red
+}
 
 $logPath = "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"
 $htmlPath = "C:\Windows\Temp\ime_monitor.html"
 $keywords = "Win32App|Identifying|Installing|Download|Success|Failed|Error|SideCarAgent|exitCode|Detection|enforcement|Completed|Pending|Tracked"
 
 function Get-Badge($msg) {
-    if ($msg -match "Failed|Error")                  { return "error" }
-    elseif ($msg -match "Success|Completed|Installed"){ return "success" }
-    elseif ($msg -match "Downloading|Download")       { return "download" }
-    elseif ($msg -match "Installing|InProgress")      { return "installing" }
-    elseif ($msg -match "Identifying|Pending")        { return "pending" }
-    else                                              { return "info" }
+    if ($msg -match "Failed|Error")                    { return "error" }
+    elseif ($msg -match "Success|Completed|Installed") { return "success" }
+    elseif ($msg -match "Downloading|Download")        { return "download" }
+    elseif ($msg -match "Installing|InProgress")       { return "installing" }
+    elseif ($msg -match "Identifying|Pending")         { return "pending" }
+    else                                               { return "info" }
 }
 
 function Update-HTML {
@@ -31,7 +35,6 @@ function Update-HTML {
             }
         }
     }
-
     $html = @"
 <!DOCTYPE html><html><head><meta http-equiv='refresh' content='5'>
 <style>
@@ -47,26 +50,26 @@ header .clock { color: #888; font-size: 13px; margin-left: auto; }
 .success .n { color: #4ade80; } .error .n { color: #f87171; } .installing .n { color: #facc15; } .download .n { color: #60a5fa; }
 #log { padding: 12px 20px; overflow-y: auto; max-height: calc(100vh - 140px); }
 .row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border-radius: 6px; margin-bottom: 4px; border-left: 3px solid transparent; }
-.row.error   { background: #2a1010; border-color: #f87171; }
-.row.success { background: #0d2a1a; border-color: #4ade80; }
-.row.download{ background: #0d1e2e; border-color: #60a5fa; }
-.row.installing{ background: #2a2200; border-color: #facc15; }
-.row.pending { background: #1e1e2a; border-color: #a78bfa; }
-.row.info    { background: #1a1a1a; border-color: #555; }
+.row.error      { background: #2a1010; border-color: #f87171; }
+.row.success    { background: #0d2a1a; border-color: #4ade80; }
+.row.download   { background: #0d1e2e; border-color: #60a5fa; }
+.row.installing { background: #2a2200; border-color: #facc15; }
+.row.pending    { background: #1e1e2a; border-color: #a78bfa; }
+.row.info       { background: #1a1a1a; border-color: #555; }
 .time { color: #888; min-width: 70px; font-size: 12px; padding-top: 1px; }
 .badge { font-size: 10px; font-weight: bold; padding: 2px 7px; border-radius: 4px; min-width: 72px; text-align: center; text-transform: uppercase; }
-.badge.error    { background: #f87171; color: #000; }
-.badge.success  { background: #4ade80; color: #000; }
-.badge.download { background: #60a5fa; color: #000; }
-.badge.installing{ background: #facc15; color: #000; }
-.badge.pending  { background: #a78bfa; color: #000; }
-.badge.info     { background: #555; color: #fff; }
+.badge.error      { background: #f87171; color: #000; }
+.badge.success    { background: #4ade80; color: #000; }
+.badge.download   { background: #60a5fa; color: #000; }
+.badge.installing { background: #facc15; color: #000; }
+.badge.pending    { background: #a78bfa; color: #000; }
+.badge.info       { background: #555; color: #fff; }
 .app { background: #333; color: #aaa; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
 .msg { color: #ddd; line-height: 1.4; word-break: break-word; }
 </style></head><body>
 <header>
   <h1>🔍 IME Monitor</h1>
-  <span class='clock'>Atualizado: $(Get-Date -Format 'HH:mm:ss') &nbsp;|&nbsp; Auto-refresh: 5s</span>
+  <span class='clock'>Atualizado: $(Get-Date -Format 'HH:mm:ss') | Auto-refresh: 5s</span>
 </header>
 <div class='stats'>
   <div class='stat success'><div class='n'>$(($lines | Where-Object {$_ -match 'row success'}).Count)</div><div class='l'>Success</div></div>
