@@ -1,4 +1,4 @@
-$VERSION = "1.7.6"
+$VERSION = "1.7.7"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -43,6 +43,8 @@ $exitCodes = @{
     "1618"        = "Outra instalação MSI em andamento"
     "1633"        = "Plataforma não suportada para este pacote"
     "3010"        = "Instalação concluída — reinicialização necessária"
+    "3399548929"  = "Falha ao obter token AAD — dispositivo sem conectividade com Azure AD"
+    "0xCAA20009"  = "Falha ao obter token AAD — dispositivo sem conectividade com Azure AD"
 }
 
 function Get-ExitCodeInfo($msg) {
@@ -122,7 +124,7 @@ function Build-HTML {
         }
     }
 
-    $lines = Get-Content $logPath -Tail 500 | ForEach-Object {
+    $lines = Get-Content $logPath -Tail 3000 | ForEach-Object {
         if ($_ -match '\!\[LOG\[(.+?)\]LOG\].*time="(\d+:\d+:\d+)') {
             $msg = $matches[1].Trim(); $time = $matches[2]
             if ($msg -match $keywords) {
