@@ -1,4 +1,4 @@
-$VERSION = "1.8.1"
+$VERSION = "1.8.2"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -183,10 +183,10 @@ function Build-HTML {
                 $resolvedApp = ""
                 if ($msg -match "File Id:\s*([A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12})") {
                     $fid = $matches[1].ToUpper()
-                    $resolvedApp = if ($appNameMap[$fid]) { $appNameMap[$fid] } else { $fid.Substring(0,8) }
+                    $resolvedApp = if ($appNameMap[$fid]) { $appNameMap[$fid] } else { "não encontrado" }
                 } elseif ($msg -match "Win32App_([a-f0-9\-]+)") {
                     $aid = $matches[1].ToUpper().Substring(0, [Math]::Min(36, $matches[1].Length))
-                    $resolvedApp = if ($appNameMap[$aid]) { $appNameMap[$aid] } else { $matches[1].Substring(0,8) }
+                    $resolvedApp = if ($appNameMap[$aid]) { $appNameMap[$aid] } else { "não encontrado" }
                 }
                 $appName = $resolvedApp
                 $appTag = if ($appName) { "<span class='app' title='$appName'>$appName</span>" } else { "" }
