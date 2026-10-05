@@ -1,4 +1,4 @@
-$VERSION = "1.6.0"
+$VERSION = "1.7.0"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -19,20 +19,20 @@ $logPath = "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManage
 $keywords = "Win32App|Identifying|Installing|Downloading|Success|Failed|Error|SideCarAgent|exitCode|Detection|enforcement|Completed|Pending|Tracked|started|Add File|Job|action status"
 
 $exitCodes = @{
-    "0x87D1041C" = "App não detectado após instalação — regra de detecção falhou"
-    "0x87D00324" = "App já instalado — sem necessidade de reinstalar"
-    "0x80070002" = "Arquivo não encontrado — conteúdo do app ausente ou corrompido"
-    "0x80070005" = "Acesso negado — permissão insuficiente para instalar"
-    "0x80070057" = "Parâmetro inválido — erro no comando de instalação"
-    "0x800704C7" = "Instalação cancelada pelo usuário ou sistema"
-    "0x80070BC2" = "Reinicialização pendente necessária para concluir"
-    "0x80070BC9" = "Reinicialização necessária antes de continuar"
-    "0x80070643" = "Falha geral na instalação — verificar log do instalador"
-    "0x80070652" = "Outra instalação em andamento — conflito de MSI"
-    "0x80004005" = "Erro não especificado — falha genérica de acesso"
-    "0x80240438" = "WSUS/WU não disponível — sem fonte de atualização"
-    "0xC1900101" = "Falha de driver durante upgrade do Windows"
-    "0x80091007" = "Hash do arquivo inválido — conteúdo corrompido no download"
+    "0x87D1041C"  = "App não detectado após instalação — regra de detecção falhou"
+    "0x87D00324"  = "App já instalado — sem necessidade de reinstalar"
+    "0x80070002"  = "Arquivo não encontrado — conteúdo do app ausente ou corrompido"
+    "0x80070005"  = "Acesso negado — permissão insuficiente para instalar"
+    "0x80070057"  = "Parâmetro inválido — erro no comando de instalação"
+    "0x800704C7"  = "Instalação cancelada pelo usuário ou sistema"
+    "0x80070BC2"  = "Reinicialização pendente necessária para concluir"
+    "0x80070BC9"  = "Reinicialização necessária antes de continuar"
+    "0x80070643"  = "Falha geral na instalação — verificar log do instalador"
+    "0x80070652"  = "Outra instalação em andamento — conflito de MSI"
+    "0x80004005"  = "Erro não especificado — falha genérica de acesso"
+    "0x80240438"  = "WSUS/WU não disponível — sem fonte de atualização"
+    "0xC1900101"  = "Falha de driver durante upgrade do Windows"
+    "0x80091007"  = "Hash do arquivo inválido — conteúdo corrompido no download"
     "0x80D02002"  = "Timeout no download via Delivery Optimization"
     "0x80D02003"  = "Delivery Optimization sem fonte disponível"
     "-2016281112" = "App não detectado após instalação — regra de detecção falhou"
@@ -47,9 +47,7 @@ $exitCodes = @{
 
 function Get-ExitCodeInfo($msg) {
     foreach ($code in $exitCodes.Keys) {
-        if ($msg -match [regex]::Escape($code)) {
-            return $exitCodes[$code]
-        }
+        if ($msg -match [regex]::Escape($code)) { return $exitCodes[$code] }
     }
     if ($msg -match "exitCode\s*[=:]\s*(\-?\d+|0x[0-9a-fA-F]+)") {
         return "Exit code: $($matches[1]) — sem descrição mapeada"
@@ -75,8 +73,7 @@ function Build-HTML {
                 $badge = Get-Badge $msg
                 $appName = if ($msg -match "Win32App_([a-f0-9\-]+)") { $matches[1].Substring(0,8) } else { "" }
                 $appTag = if ($appName) { "<span class='app'>APP:$appName</span>" } else { "" }
-                $tooltip = ""
-                $tooltipAttr = ""
+                $tooltipAttr = ""; $tooltip = ""
                 if ($badge -eq "error") {
                     $info = Get-ExitCodeInfo $msg
                     if ($info) {
@@ -138,13 +135,13 @@ button { cursor: pointer; border: none; border-radius: 6px; padding: 6px 14px; f
 .filters span { color: #888; font-size: 12px; }
 .filter-btn { cursor: pointer; border: 2px solid transparent; border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: bold; opacity: 0.5; transition: opacity .2s; }
 .filter-btn.active { opacity: 1; }
-.filter-btn.all      { background: #444; color: #fff; border-color: #666; }
-.filter-btn.success  { background: #0d2a1a; color: #4ade80; border-color: #4ade80; }
-.filter-btn.error    { background: #2a1010; color: #f87171; border-color: #f87171; }
+.filter-btn.all        { background: #444;    color: #fff;    border-color: #666; }
+.filter-btn.success    { background: #0d2a1a; color: #4ade80; border-color: #4ade80; }
+.filter-btn.error      { background: #2a1010; color: #f87171; border-color: #f87171; }
 .filter-btn.installing { background: #2a2200; color: #facc15; border-color: #facc15; }
-.filter-btn.download { background: #0d1e2e; color: #60a5fa; border-color: #60a5fa; }
-.filter-btn.pending  { background: #1e1e2a; color: #a78bfa; border-color: #a78bfa; }
-.filter-btn.info     { background: #1a1a1a; color: #888; border-color: #555; }
+.filter-btn.download   { background: #0d1e2e; color: #60a5fa; border-color: #60a5fa; }
+.filter-btn.pending    { background: #1e1e2a; color: #a78bfa; border-color: #a78bfa; }
+.filter-btn.info       { background: #1a1a1a; color: #888;    border-color: #555; }
 #log { padding: 12px 20px; overflow-y: auto; max-height: calc(100vh - 260px); }
 .row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border-radius: 6px; margin-bottom: 4px; border-left: 3px solid transparent; position: relative; }
 .row.error      { background: #2a1010; border-color: #f87171; }
@@ -160,7 +157,7 @@ button { cursor: pointer; border: none; border-radius: 6px; padding: 6px 14px; f
 .badge.download   { background: #60a5fa; color: #000; }
 .badge.installing { background: #facc15; color: #000; }
 .badge.pending    { background: #a78bfa; color: #000; }
-.badge.info       { background: #555; color: #fff; }
+.badge.info       { background: #555;    color: #fff; }
 .app { background: #333; color: #aaa; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
 .msg { color: #ddd; line-height: 1.4; word-break: break-word; flex: 1; }
 .tooltip-icon { cursor: help; font-size: 14px; }
@@ -266,15 +263,26 @@ while ($listener.IsListening) {
             $ctx.Response.OutputStream.Close()
             Write-Host "Browser fechado — encerrando." -ForegroundColor Yellow
             $listener.Stop()
-        } else {
-            $html = Build-HTML
-            $buf = [System.Text.Encoding]::UTF8.GetBytes($html)
-            $ctx.Response.ContentType = "text/html; charset=utf-8"
-            $ctx.Response.ContentLength64 = $buf.Length
-            $ctx.Response.OutputStream.Write($buf, 0, $buf.Length)
+        } elseif ($path -eq "/favicon.ico") {
+            $ctx.Response.StatusCode = 404
             $ctx.Response.OutputStream.Close()
+        } else {
+            try {
+                $html = Build-HTML
+                $buf = [System.Text.Encoding]::UTF8.GetBytes($html)
+                $ctx.Response.ContentType = "text/html; charset=utf-8"
+                $ctx.Response.ContentLength64 = $buf.Length
+                $ctx.Response.OutputStream.Write($buf, 0, $buf.Length)
+                $ctx.Response.OutputStream.Close()
+            } catch {
+                try { $ctx.Response.StatusCode = 500; $ctx.Response.OutputStream.Close() } catch {}
+            }
         }
-    } catch {}
+    } catch [System.Net.HttpListenerException] {
+        if ($listener.IsListening) { continue } else { break }
+    } catch {
+        continue
+    }
 }
 
 $watchdog.Dispose()
