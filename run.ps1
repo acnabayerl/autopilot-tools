@@ -1,4 +1,4 @@
-$VERSION = "1.0.0"
+$VERSION = "1.2.0"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -16,45 +16,65 @@ if ($script) {
 }
 
 $logPath = "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"
-$keywords = "Win32App|Identifying|Installing|Download|Success|Failed|Error|SideCarAgent|exitCode|Detection|enforcement|Completed|Pending|Tracked"
+$keywords = "Win32App|Identifying|Installing|Downloading|Success|Failed|Error|SideCarAgent|exitCode|Detection|enforcement|Completed|Pending|Tracked|started|Add File|Job|action status"
 
 function Get-Badge($msg) {
-    if ($msg -match "Failed|Error")                    { return "error" }
-    elseif ($msg -match "Success|Completed|Installed") { return "success" }
-    elseif ($msg -match "Downloading|Download")        { return "download" }
-    elseif ($msg -match "Installing|InProgress")       { return "installing" }
-    elseif ($msg -match "Identifying|Pending")         { return "pending" }
-    else                                               { return "info" }
+    if ($msg -match "Failed|Error")                                      { return "error" }
+    elseif ($msg -match "Success|Completed|Installed|action status.*Success") { return "success" }
+    elseif ($msg -match "Add File|Downloading|Download")                 { return "download" }
+    elseif ($msg -match "Installing|InProgress|started|Starting job")    { return "installing" }
+    elseif ($msg -match "Identifying|Pending|Waiting")                   { return "pending" }
+    else                                                                 { return "info" }
 }
 
 function Build-HTML {
-    $lines = Get-Content $logPath -Tail 300 | ForEach-Object {
+    $lines = Get-Content $logPath -Tail 500 | ForEach-Object {
         if ($_ -match '\!\[LOG\[(.+?)\]LOG\].*time="(\d+:\d+:\d+)') {
             $msg = $matches[1].Trim(); $time = $matches[2]
             if ($msg -match $keywords) {
                 $badge = Get-Badge $msg
                 $appName = if ($msg -match "Win32App_([a-f0-9\-]+)") { $matches[1].Substring(0,8) } else { "" }
                 $appTag = if ($appName) { "<span class='app'>APP:$appName</span>" } else { "" }
-                "<div class='row $badge'><span class='time'>$time</span><span class='badge $badge'>$badge</span>$appTag<span class='msg'>$msg</span></div>"
+                "<div class='row $badge' data-type='$badge'><span class='time'>$time</span><span class='badge $badge'>$badge</span>$appTag<span class='msg'>$msg</span></div>"
             }
         }
     }
+
+    $cSuccess  = ($lines | Where-Object {$_ -match "data-type='success'"}).Count
+    $cError    = ($lines | Where-Object {$_ -match "data-type='error'"}).Count
+    $cInstall  = ($lines | Where-Object {$_ -match "data-type='installing'"}).Count
+    $cDownload = ($lines | Where-Object {$_ -match "data-type='download'"}).Count
+
     return @"
 <!DOCTYPE html><html><head>
-<meta http-equiv='refresh' content='5'>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0f0f0f; font-family: 'Segoe UI', Consolas, monospace; font-size: 13px; color: #ccc; }
-header { background: #1a1a2e; padding: 16px 20px; border-bottom: 2px solid #333; display: flex; align-items: center; gap: 12px; }
+header { background: #1a1a2e; padding: 14px 20px; border-bottom: 2px solid #333; display: flex; align-items: center; gap: 12px; }
 header h1 { color: #fff; font-size: 18px; }
 .version { background: #333; color: #aaa; font-size: 11px; padding: 3px 8px; border-radius: 4px; }
 header .clock { color: #888; font-size: 13px; margin-left: auto; }
-.stats { display: flex; gap: 12px; padding: 12px 20px; background: #111; border-bottom: 1px solid #222; }
+.controls { display: flex; gap: 8px; align-items: center; }
+button { cursor: pointer; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: bold; }
+#btnRefresh { background: #4ade80; color: #000; }
+#btnRefresh.paused { background: #f87171; color: #000; }
+.filters { display: flex; gap: 8px; padding: 10px 20px; background: #111; border-bottom: 1px solid #222; flex-wrap: wrap; align-items: center; }
+.filters span { color: #888; font-size: 12px; }
+.filter-btn { cursor: pointer; border: 2px solid transparent; border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: bold; opacity: 0.5; transition: opacity .2s; }
+.filter-btn.active { opacity: 1; }
+.filter-btn.all    { background: #444; color: #fff; border-color: #666; }
+.filter-btn.success  { background: #0d2a1a; color: #4ade80; border-color: #4ade80; }
+.filter-btn.error    { background: #2a1010; color: #f87171; border-color: #f87171; }
+.filter-btn.installing{ background: #2a2200; color: #facc15; border-color: #facc15; }
+.filter-btn.download { background: #0d1e2e; color: #60a5fa; border-color: #60a5fa; }
+.filter-btn.pending  { background: #1e1e2a; color: #a78bfa; border-color: #a78bfa; }
+.filter-btn.info     { background: #1a1a1a; color: #888;    border-color: #555; }
+.stats { display: flex; gap: 12px; padding: 10px 20px; background: #111; border-bottom: 1px solid #222; }
 .stat { background: #1e1e1e; border-radius: 8px; padding: 8px 16px; text-align: center; min-width: 80px; }
 .stat .n { font-size: 22px; font-weight: bold; }
 .stat .l { font-size: 11px; color: #888; margin-top: 2px; }
 .success .n { color: #4ade80; } .error .n { color: #f87171; } .installing .n { color: #facc15; } .download .n { color: #60a5fa; }
-#log { padding: 12px 20px; overflow-y: auto; max-height: calc(100vh - 140px); }
+#log { padding: 12px 20px; overflow-y: auto; max-height: calc(100vh - 200px); }
 .row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border-radius: 6px; margin-bottom: 4px; border-left: 3px solid transparent; }
 .row.error      { background: #2a1010; border-color: #f87171; }
 .row.success    { background: #0d2a1a; border-color: #4ade80; }
@@ -76,16 +96,65 @@ header .clock { color: #888; font-size: 13px; margin-left: auto; }
 <header>
   <h1>🔍 IME Monitor</h1>
   <span class='version'>v$VERSION</span>
-  <span class='clock'>Atualizado: $(Get-Date -Format 'HH:mm:ss') | Auto-refresh: 5s</span>
+  <span class='clock' id='clock'>Atualizado: $(Get-Date -Format 'HH:mm:ss')</span>
+  <div class='controls'>
+    <button id='btnRefresh' onclick='toggleRefresh()'>⏸ Pausar</button>
+  </div>
 </header>
 <div class='stats'>
-  <div class='stat success'><div class='n'>$(($lines | Where-Object {$_ -match 'row success'}).Count)</div><div class='l'>Success</div></div>
-  <div class='stat error'><div class='n'>$(($lines | Where-Object {$_ -match 'row error'}).Count)</div><div class='l'>Errors</div></div>
-  <div class='stat installing'><div class='n'>$(($lines | Where-Object {$_ -match 'row installing'}).Count)</div><div class='l'>Installing</div></div>
-  <div class='stat download'><div class='n'>$(($lines | Where-Object {$_ -match 'row download'}).Count)</div><div class='l'>Downloads</div></div>
+  <div class='stat success'><div class='n'>$cSuccess</div><div class='l'>Success</div></div>
+  <div class='stat error'><div class='n'>$cError</div><div class='l'>Errors</div></div>
+  <div class='stat installing'><div class='n'>$cInstall</div><div class='l'>Installing</div></div>
+  <div class='stat download'><div class='n'>$cDownload</div><div class='l'>Downloads</div></div>
+</div>
+<div class='filters'>
+  <span>Filtrar:</span>
+  <button class='filter-btn all active' onclick='filter("all")'>Todos</button>
+  <button class='filter-btn success' onclick='filter("success")'>✅ Success</button>
+  <button class='filter-btn error' onclick='filter("error")'>❌ Error</button>
+  <button class='filter-btn installing' onclick='filter("installing")'>⚙️ Installing</button>
+  <button class='filter-btn download' onclick='filter("download")'>📥 Download</button>
+  <button class='filter-btn pending' onclick='filter("pending")'>⏳ Pending</button>
+  <button class='filter-btn info' onclick='filter("info")'>ℹ️ Info</button>
 </div>
 <div id='log'>$($lines -join '')</div>
-<script>document.getElementById('log').scrollTop=99999</script>
+<script>
+  var refreshTimer;
+  var paused = false;
+
+  function toggleRefresh() {
+    paused = !paused;
+    var btn = document.getElementById('btnRefresh');
+    if (paused) {
+      btn.textContent = '▶ Retomar';
+      btn.classList.add('paused');
+      clearTimeout(refreshTimer);
+    } else {
+      btn.textContent = '⏸ Pausar';
+      btn.classList.remove('paused');
+      scheduleRefresh();
+    }
+  }
+
+  function scheduleRefresh() {
+    refreshTimer = setTimeout(function() { location.reload(); }, 5000);
+  }
+
+  function filter(type) {
+    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelector('.filter-btn.' + type).classList.add('active');
+    document.querySelectorAll('.row').forEach(function(r) {
+      if (type === 'all' || r.dataset.type === type) {
+        r.style.display = '';
+      } else {
+        r.style.display = 'none';
+      }
+    });
+  }
+
+  document.getElementById('log').scrollTop = 99999;
+  if (!paused) scheduleRefresh();
+</script>
 </body></html>
 "@
 }
