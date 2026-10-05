@@ -1,4 +1,4 @@
-$VERSION = "1.7.4"
+$VERSION = "1.7.5"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -273,8 +273,6 @@ $errorGroupHTML
     else { btn.textContent = '⏸ Pausar'; btn.classList.remove('paused'); scheduleRefresh(); }
   }
 
-  function scheduleRefresh() { refreshTimer = setTimeout(function() { location.reload(); }, 5000); }
-
   function filter(type) {
     document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
     document.querySelector('.filter-btn.' + type).classList.add('active');
@@ -292,13 +290,16 @@ $errorGroupHTML
   document.getElementById('log').scrollTop = 99999;
   if (!paused) scheduleRefresh();
 
+  var _closing = false;
+  function scheduleRefresh() { refreshTimer = setTimeout(function() { _closing = true; location.reload(); }, 5000); }
+
   document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'hidden') {
+    if (document.visibilityState === 'hidden' && !_closing) {
       setTimeout(function() {
-        if (document.visibilityState === 'hidden') {
+        if (document.visibilityState === 'hidden' && !_closing) {
           navigator.sendBeacon('/close');
         }
-      }, 3000);
+      }, 15000);
     }
   });
 </script>
@@ -314,7 +315,7 @@ Start-Process "http://localhost:8080/"
 
 $script:lastPing = [datetime]::UtcNow
 $watchdog = [System.Threading.Timer]::new({
-    if (([datetime]::UtcNow - $script:lastPing).TotalSeconds -gt 30) {
+    if (([datetime]::UtcNow - $script:lastPing).TotalSeconds -gt 90) {
         Write-Host "Browser fechado — encerrando." -ForegroundColor Yellow
         $listener.Stop()
     }
