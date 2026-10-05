@@ -1,4 +1,4 @@
-$VERSION = "1.7.3"
+$VERSION = "1.7.4"
 Write-Host "==============================" -ForegroundColor Cyan
 Write-Host "  IME Monitor v$VERSION" -ForegroundColor Yellow
 Write-Host "==============================" -ForegroundColor Cyan
@@ -68,7 +68,8 @@ function Build-HTML {
     $errorGroups = @{}
 
     # Mapear AppId -> Nome do app via arquivos de estado do IME
-    $appNameMap = @{}
+    $script:appNameMap = @{}
+    $appNameMap = $script:appNameMap
     $imePath = "C:\ProgramData\Microsoft\IntuneManagementExtension"
 
     # 1) Arquivos JSON de estado/relatorio do IME
@@ -282,6 +283,12 @@ $errorGroupHTML
     });
   }
 
+  // Debug IME
+  console.log('[IME] nomes=$($script:appNameMap.Count) | sample:', $(
+    $s = $script:appNameMap.GetEnumerator() | Select-Object -First 3 | ForEach-Object { "`"$($_.Key.Substring(0,8))`":`"$($_.Value)`"" }
+    if ($s) { "{" + ($s -join ",") + "}" } else { '{}' }
+  ));
+
   document.getElementById('log').scrollTop = 99999;
   if (!paused) scheduleRefresh();
 
@@ -327,8 +334,8 @@ while ($listener.IsListening) {
             Write-Host "Browser fechado — encerrando." -ForegroundColor Yellow
             $listener.Stop()
         } elseif ($path -eq "/debug-app") {
-            $dbgLines = @("=== AppNameMap ($($appNameMap.Count) entradas) ===")
-            $appNameMap.GetEnumerator() | Select-Object -First 20 | ForEach-Object { $dbgLines += "$($_.Key) = $($_.Value)" }
+            $dbgLines = @("=== AppNameMap ($($script:appNameMap.Count) entradas) ===")
+            $script:appNameMap.GetEnumerator() | Select-Object -First 20 | ForEach-Object { $dbgLines += "$($_.Key) = $($_.Value)" }
             $dbgLines += ""
             $dbgLines += "=== Linhas do log com GUID + name (primeiras 20) ==="
             $found = Get-Content $logPath -Tail 3000 | Where-Object {
